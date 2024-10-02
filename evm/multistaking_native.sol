@@ -18,7 +18,7 @@ contract NativeCoinsMultistaking is ERC20 {
 
         require(msg.value > 0, "No funds sent");
 
-        // Assign it to some pool  Обновляем данные замороженных средств пользователя
+        // Assign it to some pool
         stakingPools[toPool] += msg.value;
         
         // Emit appropriate amount of own tokens to save liqudity
