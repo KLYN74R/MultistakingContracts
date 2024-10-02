@@ -37,6 +37,9 @@ contract NativeCoinsMultistaking is ERC20 {
         // Burn this tokens and return native coins
 
         _burn(msg.sender, amount);
+
+        // Reduce the staking points from pool
+        stakingPools[fromPool] -= amount;
         
         payable(msg.sender).transfer(amount);
 
