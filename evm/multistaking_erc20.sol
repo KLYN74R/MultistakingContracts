@@ -9,18 +9,27 @@ contract ERC20Multistaking is ERC20 {
     IERC20 public depositToken; // target token to accept as multistaking
     
     mapping(address => uint256) public stakingPools;
+
+    struct WithdrawalRequest {
+        uint256 amount;
+        uint256 unlockTime;
+    }
     
-    event StakeOccured(address indexed staker,address indexed toPool, uint256 indexed amount);
-    event UnstakeOccured(address indexed unstaker,address indexed fromPool, uint256 indexed amount);
+    mapping(address => WithdrawalRequest[]) public withdrawalRequests;
+    
+    uint256 public lockPeriod = 3 days;
+
+    event StakeOccured(address indexed staker, address indexed toPool, uint256 indexed amount);
+    event UnstakeRequested(address indexed unstaker, address indexed fromPool, uint256 indexed amount, uint256 unlockTime);
+    event UnstakeMultipleRequested(address indexed unstaker, uint256 indexed totalAmount, uint256 unlockTime);
+    event Withdrawal(address indexed unstaker, uint256 indexed amount);
 
     constructor(
         string memory name, 
         string memory symbol, 
         address _depositToken
     ) ERC20(name, symbol) {
-        
         depositToken = IERC20(_depositToken);
-    
     }
 
     // Function to stake ERC-20 tokens to some pool
@@ -41,6 +50,7 @@ contract ERC20Multistaking is ERC20 {
         emit StakeOccured(msg.sender, toPool, amount);
     }
 
+
     // Function to unstake
     function unstake(address fromPool, uint256 amount) external {
         
@@ -49,27 +59,23 @@ contract ERC20Multistaking is ERC20 {
 
         // Burn this tokens and return the real token to staker
         _burn(msg.sender, amount);
-
+        
         // Reduce the staking points from pool
         stakingPools[fromPool] -= amount;
 
-        require(depositToken.transfer(msg.sender, amount), "Transfer failed");
+        withdrawalRequests[msg.sender].push(WithdrawalRequest({
+            amount: amount,
+            unlockTime: block.timestamp + lockPeriod
+        }));
 
-        if(stakingPools[fromPool] == 0){
-
-            delete stakingPools[fromPool];
-
-        }
-
-        emit UnstakeOccured(msg.sender, fromPool, amount);
-        
+        emit UnstakeRequested(msg.sender, fromPool, amount, block.timestamp + lockPeriod);
     }
 
     // Function to unstake from multiple pools in one call
     function unstakeMultiple(address[] memory fromPools, uint256[] memory amounts) external {
         
         require(fromPools.length == amounts.length, "Pools and amounts array length mismatch");
-        
+
         uint256 totalUnstaked = 0;
 
         for (uint256 i = 0; i < fromPools.length; i++) {
@@ -84,18 +90,40 @@ contract ERC20Multistaking is ERC20 {
 
             // Reduce the staking points from the pool
             stakingPools[fromPool] -= amount;
-
-            require(depositToken.transfer(msg.sender, amount), "Transfer failed");
+            totalUnstaked += amount;
 
             if (stakingPools[fromPool] == 0) {
                 delete stakingPools[fromPool];
             }
 
-            emit UnstakeOccured(msg.sender, fromPool, amount);
-            totalUnstaked += amount;
+            emit UnstakeRequested(msg.sender, fromPool, amount, block.timestamp + lockPeriod);
         }
 
-        require(totalUnstaked > 0, "No tokens unstaked");
+        withdrawalRequests[msg.sender].push(WithdrawalRequest({
+            amount: totalUnstaked,
+            unlockTime: block.timestamp + lockPeriod
+        }));
+
+        emit UnstakeMultipleRequested(msg.sender, totalUnstaked, block.timestamp + lockPeriod);
     }
 
+
+    function withdraw() external {
+        uint256 totalAmountToWithdraw = 0;
+
+        WithdrawalRequest[] storage requests = withdrawalRequests[msg.sender];
+
+        for (uint256 i = 0; i < requests.length; i++) {
+            if (block.timestamp >= requests[i].unlockTime && requests[i].amount > 0) {
+                totalAmountToWithdraw += requests[i].amount;
+                delete requests[i];
+            }
+        }
+
+        require(totalAmountToWithdraw > 0, "No withdrawable amount");
+
+        require(depositToken.transfer(msg.sender, totalAmountToWithdraw), "Transfer failed");
+
+        emit Withdrawal(msg.sender, totalAmountToWithdraw);
+    }
 }

@@ -7,49 +7,52 @@ contract NativeCoinsMultistaking is ERC20 {
     
     mapping(address => uint256) public stakingPools;
     
+    struct WithdrawalRequest {
+        uint256 amount;
+        uint256 unlockTime;
+    }
+    
+    mapping(address => WithdrawalRequest[]) public withdrawalRequests;
+    
+    uint256 public lockPeriod = 3 days;
+
     event StakeOccured(address indexed staker, address indexed toPool, uint256 indexed amount);
-    event UnstakeOccured(address indexed unstaker, address indexed fromPool, uint256 indexed amount);
+    event UnstakeRequested(address indexed unstaker, address indexed fromPool, uint256 indexed amount, uint256 unlockTime);
+    event UnstakeMultipleRequested(address indexed unstaker, uint256 indexed totalAmount, uint256 unlockTime);
+    event Withdrawal(address indexed unstaker, uint256 indexed amount);
 
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
 
-    // Function to stake native coins of network (ETH, BNB, AVAX, etc.)
     function stake(address toPool) external payable {
         require(msg.value > 0, "No funds sent");
-
-        // Assign native coins to the pool
-        stakingPools[toPool] += msg.value;
         
-        // Mint equivalent amount of own tokens
+        stakingPools[toPool] += msg.value;
+
         _mint(msg.sender, msg.value);
 
         emit StakeOccured(msg.sender, toPool, msg.value);
     }
 
-    // Function to receive native coins back by burning current token and unstake from pool
     function unstake(address fromPool, uint256 amount) external {
-
         require(stakingPools[fromPool] >= amount, "Pool doesn't have enough points to unstake");
         require(balanceOf(msg.sender) >= amount, "Not enough ERC-20 tokens");
 
-        // Burn tokens and return native coins
         _burn(msg.sender, amount);
 
-        // Reduce staking points in the pool
         stakingPools[fromPool] -= amount;
-        
-        payable(msg.sender).transfer(amount);
 
-        if (stakingPools[fromPool] == 0) {
-            delete stakingPools[fromPool];
-        }
+        withdrawalRequests[msg.sender].push(WithdrawalRequest({
+            amount: amount,
+            unlockTime: block.timestamp + lockPeriod
+        }));
 
-        emit UnstakeOccured(msg.sender, fromPool, amount);
+        emit UnstakeRequested(msg.sender, fromPool, amount, block.timestamp + lockPeriod);
     }
 
-    // Function to unstake from multiple pools in one call
+
     function unstakeMultiple(address[] memory fromPools, uint256[] memory amounts) external {
         require(fromPools.length == amounts.length, "Pools and amounts array length mismatch");
-        
+
         uint256 totalUnstaked = 0;
 
         for (uint256 i = 0; i < fromPools.length; i++) {
@@ -59,23 +62,43 @@ contract NativeCoinsMultistaking is ERC20 {
             require(stakingPools[fromPool] >= amount, "Pool doesn't have enough points to unstake");
             require(balanceOf(msg.sender) >= amount, "Not enough ERC-20 tokens");
 
-            // Burn tokens and prepare to return native coins
             _burn(msg.sender, amount);
 
-            // Reduce staking points in the pool
             stakingPools[fromPool] -= amount;
-
-            // Accumulate total unstaked amount
             totalUnstaked += amount;
 
             if (stakingPools[fromPool] == 0) {
                 delete stakingPools[fromPool];
             }
 
-            emit UnstakeOccured(msg.sender, fromPool, amount);
+            emit UnstakeRequested(msg.sender, fromPool, amount, block.timestamp + lockPeriod);
         }
 
-        // Transfer the total unstaked native coins
-        payable(msg.sender).transfer(totalUnstaked);
+        withdrawalRequests[msg.sender].push(WithdrawalRequest({
+            amount: totalUnstaked,
+            unlockTime: block.timestamp + lockPeriod
+        }));
+
+        emit UnstakeMultipleRequested(msg.sender, totalUnstaked, block.timestamp + lockPeriod);
+    }
+
+    function withdraw() external {
+        uint256 totalAmountToWithdraw = 0;
+
+        WithdrawalRequest[] storage requests = withdrawalRequests[msg.sender];
+
+        for (uint256 i = 0; i < requests.length; i++) {
+            if (block.timestamp >= requests[i].unlockTime && requests[i].amount > 0) {
+                totalAmountToWithdraw += requests[i].amount;
+
+                delete requests[i];
+            }
+        }
+
+        require(totalAmountToWithdraw > 0, "No withdrawable amount");
+
+        payable(msg.sender).transfer(totalAmountToWithdraw);
+
+        emit Withdrawal(msg.sender, totalAmountToWithdraw);
     }
 }
