@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract NativeCoinsMultistaking is ERC20 {
     
-    mapping(address => uint256) public stakingPools;
+    mapping(string => uint256) public stakingPools;
     
     struct WithdrawalRequest {
         uint256 amount;
@@ -16,14 +16,14 @@ contract NativeCoinsMultistaking is ERC20 {
     
     uint256 public lockPeriod = 3 days;
 
-    event StakeOccured(address indexed staker, address indexed toPool, uint256 indexed amount);
-    event UnstakeRequested(address indexed unstaker, address indexed fromPool, uint256 indexed amount, uint256 unlockTime);
+    event StakeOccured(address indexed staker, string indexed toPool, uint256 indexed amount);
+    event UnstakeRequested(address indexed unstaker, string indexed fromPool, uint256 indexed amount, uint256 unlockTime);
     event UnstakeMultipleRequested(address indexed unstaker, uint256 indexed totalAmount, uint256 unlockTime);
     event Withdrawal(address indexed unstaker, uint256 indexed amount);
 
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
 
-    function stake(address toPool) external payable {
+    function stake(string memory toPool) external payable {
         require(msg.value > 0, "No funds sent");
         
         stakingPools[toPool] += msg.value;
@@ -33,7 +33,7 @@ contract NativeCoinsMultistaking is ERC20 {
         emit StakeOccured(msg.sender, toPool, msg.value);
     }
 
-    function unstake(address fromPool, uint256 amount) external {
+    function unstake(string memory fromPool, uint256 amount) external {
         require(stakingPools[fromPool] >= amount, "Pool doesn't have enough points to unstake");
         require(balanceOf(msg.sender) >= amount, "Not enough ERC-20 tokens");
 
@@ -50,13 +50,13 @@ contract NativeCoinsMultistaking is ERC20 {
     }
 
 
-    function unstakeMultiple(address[] memory fromPools, uint256[] memory amounts) external {
+    function unstakeMultiple(string[] memory fromPools, uint256[] memory amounts) external {
         require(fromPools.length == amounts.length, "Pools and amounts array length mismatch");
 
         uint256 totalUnstaked = 0;
 
         for (uint256 i = 0; i < fromPools.length; i++) {
-            address fromPool = fromPools[i];
+            string memory fromPool = fromPools[i];
             uint256 amount = amounts[i];
 
             require(stakingPools[fromPool] >= amount, "Pool doesn't have enough points to unstake");

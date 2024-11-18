@@ -8,7 +8,7 @@ contract ERC20Multistaking is ERC20 {
 
     IERC20 public depositToken; // target token to accept as multistaking
     
-    mapping(address => uint256) public stakingPools;
+    mapping(string => uint256) public stakingPools;
 
     struct WithdrawalRequest {
         uint256 amount;
@@ -19,8 +19,8 @@ contract ERC20Multistaking is ERC20 {
     
     uint256 public lockPeriod = 3 days;
 
-    event StakeOccured(address indexed staker, address indexed toPool, uint256 indexed amount);
-    event UnstakeRequested(address indexed unstaker, address indexed fromPool, uint256 indexed amount, uint256 unlockTime);
+    event StakeOccured(address indexed staker, string indexed toPool, uint256 indexed amount);
+    event UnstakeRequested(address indexed unstaker, string indexed fromPool, uint256 indexed amount, uint256 unlockTime);
     event UnstakeMultipleRequested(address indexed unstaker, uint256 indexed totalAmount, uint256 unlockTime);
     event Withdrawal(address indexed unstaker, uint256 indexed amount);
 
@@ -33,12 +33,11 @@ contract ERC20Multistaking is ERC20 {
     }
 
     // Function to stake ERC-20 tokens to some pool
-    function stake(address toPool, uint256 amount) external {
+    function stake(string memory toPool, uint256 amount) external {
         
         require(amount > 0, "No tokens provided");
 
         // Transfer stake to the address of current contract
-
         require(depositToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
 
         // Update the value of staking points for pool
@@ -50,9 +49,8 @@ contract ERC20Multistaking is ERC20 {
         emit StakeOccured(msg.sender, toPool, amount);
     }
 
-
     // Function to unstake
-    function unstake(address fromPool, uint256 amount) external {
+    function unstake(string memory fromPool, uint256 amount) external {
         
         require(stakingPools[fromPool] >= amount, "Pool doesn't have enough points to unstake");
         require(balanceOf(msg.sender) >= amount, "Not enough ERC-20 tokens");
@@ -72,14 +70,14 @@ contract ERC20Multistaking is ERC20 {
     }
 
     // Function to unstake from multiple pools in one call
-    function unstakeMultiple(address[] memory fromPools, uint256[] memory amounts) external {
+    function unstakeMultiple(string[] memory fromPools, uint256[] memory amounts) external {
         
         require(fromPools.length == amounts.length, "Pools and amounts array length mismatch");
 
         uint256 totalUnstaked = 0;
 
         for (uint256 i = 0; i < fromPools.length; i++) {
-            address fromPool = fromPools[i];
+            string memory fromPool = fromPools[i];
             uint256 amount = amounts[i];
 
             require(stakingPools[fromPool] >= amount, "Pool doesn't have enough points to unstake");
@@ -106,7 +104,6 @@ contract ERC20Multistaking is ERC20 {
 
         emit UnstakeMultipleRequested(msg.sender, totalUnstaked, block.timestamp + lockPeriod);
     }
-
 
     function withdraw() external {
         uint256 totalAmountToWithdraw = 0;
